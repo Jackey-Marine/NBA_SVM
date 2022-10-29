@@ -1,9 +1,3 @@
-# predict NBA 🏆 by SVM
-
-# python env
-import sys
-print(sys.version)
-
 # 1 package import
 import numpy as np
 import pandas as pd
@@ -33,6 +27,15 @@ rcParams['figure.figsize'] = 10, 5
 # 2 Data cleaning and preprocessing
 # load data
 df = pd.read_csv("NBA_SVM/data/games.csv")
+
+# plot total number of games played in each season
+fig, ax = plt.subplots()
+v_c = df['SEASON'].value_counts().sort_index()
+v_c.index = v_c.index.astype(str)
+ax.bar(v_c.index, v_c.values)
+plt.title("Total number of games played in each season")
+plt.show()
+
 # sort data by GAME_DATA_EST
 df = df.sort_values(by='GAME_DATE_EST').reset_index(drop = True)
 # drop NaN data and check
@@ -57,6 +60,17 @@ print(df)
 df = df.loc[df['GAME_DATE_EST'] < '2021-08-01'].reset_index(drop=True)
 # list all features
 feature_list = list(df.columns)
+
+# The correlation coefficient of the features
+corr = df[feature_list].corr()
+fig, ax = plt.subplots(figsize=(10, 10))
+# Generate a custom diverging colormap
+cmap = sns.diverging_palette(230, 20, as_cmap=True)
+# Draw the heatmap with the mask and correct aspect ratio
+sns.heatmap(corr, vmax=1, center=0, vmin=-1, cmap=cmap,
+            square=True, linewidths=.5, cbar_kws={"shrink": .5})
+plt.show()
+
 # selecte features
 selected_features = [
     'FG_PCT_home', 'FT_PCT_home', 'FG3_PCT_home', 'AST_home', 'REB_home',
@@ -84,8 +98,8 @@ scaler = StandardScaler()
 X_train = scaler.fit_transform(X_train)
 
 # train SVM
-clf = svm.SVC(kernel='linear') # initialize a model
-clf.fit(X_train, y_train) # fit(train) it with the training data and targets
+clf = svm.SVC(kernel='linear')
+clf.fit(X_train, y_train)
 
 # check test score 
 y_pred = clf.predict(X_test) 
@@ -99,7 +113,6 @@ param_grid = {'C': [0.1, 1, 10],
 grid = GridSearchCV(svm.SVC(kernel='linear'), param_grid, scoring = scoring, refit=True, verbose=2) 
 grid.fit(X_train, y_train)
 
-# print the best model's hyperparameters
 Dis = grid.best_estimator_
 print(Dis)
 
@@ -112,27 +125,22 @@ selected_distributions = [
     'beta', 'gamma', 'dgamma', 'dweibull',
     'maxwell', 'pareto', 'fisk']
 
-# extract all the unique teams
 unique_teams = df['HOME_TEAM_ID'].unique()
 
-# Get all the data for teams
 all_team_sim_data = {}
 
 for team_name in unique_teams:
     
-    # find games where the team is either the host or guest
     df_team = df_.loc[(df_['HOME_TEAM_ID'] == team_name) | (df_['VISITOR_TEAM_ID'] == team_name)]
     df_1 = df_team.loc[df_team['HOME_TEAM_ID'] == team_name][selected_features[:5]]
     df_0 = df_team.loc[df_team['VISITOR_TEAM_ID'] == team_name][selected_features[5:]]
 
-    # combine df_0 and df_1
     df_0.columns = df_1.columns
     df_s = pd.concat([df_1, df_0], axis = 0)
     
-    # convert the pandas.DataFrame to numpy array
     all_team_sim_data[team_name] = df_s.to_numpy()
 
-megadata = {} # store the data that our Generator will rely on
+megadata = {}
 
 for team_name in unique_teams:
     
@@ -160,39 +168,38 @@ class Game:
     '''
     def __init__ (self, random_state = None):
         
-        self.random_state = random_state # keep this to None for making simulations 
+        self.random_state = random_state
     
     def predict(self, team1, team2, num_games = 1):
         
         ''' predict the win or loss of  n game(s) played by two tems'''
         
         assert num_games >= 1, "at least one game must be played"
-        # output numpy array
+        
         team_1_feature_data = DATA[team1]
         team_2_feature_data = DATA[team2]
         features = []
         for feature_paras_1 in team_1_feature_data:
-            sample_1 = self.sampling(feature_paras_1, size = num_games) # gives a list if num_games> 1
+            sample_1 = self.sampling(feature_paras_1, size = num_games)
             features.append(sample_1) 
             
         for feature_paras_2 in team_2_feature_data:
-            sample_2 = self.sampling(feature_paras_2, size = num_games) # gives a list if num_games> 1
+            sample_2 = self.sampling(feature_paras_2, size = num_games)
             features.append(sample_2)
             
         features = np.array(features).T 
         win_loss = DIS.predict(features)
         
-        return list(win_loss) # a list of win/loss from num_games
+        return list(win_loss)
     
     
     def sampling(self, dic, size = 1, random_state = None):
         
         '''generate feature values used for making win/loss prediction'''
                         
-        dis_name = list(dic.keys())[0] # get the type
-        paras = list(dic.values())[0] # get the paras
-    
-        # get sample
+        dis_name = list(dic.keys())[0]
+        paras = list(dic.values())[0]
+
         sample = GEN[dis_name](*paras, size = size,  random_state =  random_state)
             
         return sample 
@@ -206,15 +213,14 @@ class FinalTournament(Game):
         self.n_games_per_group  = n_games_per_group
         self.winning_threshold = winning_threshold
         self.team_list = None
-        self.rounds = {} # keep track the number of times a team wins at each round 
+        self.rounds = {} 
         super().__init__(random_state)
         
     
     def simulate(self, group_list, n_simulation = 1, probs = True):
         
         ''' simulate the entire playoff n times and also record the accumulated wins'''
-             
-        # update the list of teams
+
         self.rounds = {}
         self.team_list = [i[0] for i in group_list] + [i[1] for i in group_list]
         
@@ -227,21 +233,18 @@ class FinalTournament(Game):
     def one_time_simu(self, group_list, verbose = False, probs = False):
         
         ''' simulate the entire playoff once and also record the accumulated wins'''
-        
-        # update the list of teams if haven't done so
+
         if self.team_list == None: 
             self.team_list = [i[0] for i in group_list] + [i[1] for i in group_list]
         round_number, done = 0, 0
         while not done: 
             all_group_winners, group_list = self.play_round(group_list)
-            # retrive round stats
             try:
                 updated_round_stats = self.rounds[round_number]
             except KeyError:
                 updated_round_stats = {}
                 for team in self.team_list:
                     updated_round_stats[team] = 0
-            # if a team wins, record + 1 
             for winner in all_group_winners:
                 try: 
                     updated_round_stats[winner] += 1
@@ -252,7 +255,7 @@ class FinalTournament(Game):
                 print('{} round played'.format(round_number))
             if probs:
                 self.rounds_probs = self._compute_probs()
-            if type(group_list) != list: # if it becomes the final
+            if type(group_list) != list:
                 done = 1
             round_number += 1
             
@@ -264,7 +267,6 @@ class FinalTournament(Game):
         '''play a round of games based of a list of paired teams'''
         
         all_group_winners = [] 
-        # play each group and get the group winner
         for group in group_list:
             winner = self.play_n_games(group[0], group[1])
             all_group_winners.append(winner)
@@ -272,7 +274,6 @@ class FinalTournament(Game):
         if len(all_group_winners) > 1:
             new_group_list = []         
             for index in range(0, len(all_group_winners), 2):
-                # first winner, second winner
                 new_group = [all_group_winners[index], all_group_winners[index + 1]]
                 new_group_list.append(new_group)
                 
@@ -287,9 +288,9 @@ class FinalTournament(Game):
         
         result = Game().predict(team1, team2, self.n_games_per_group)
         if sum(result[:4]) == self.winning_threshold or sum(result) >= self.winning_threshold:
-            winner = team1 # home team wins
+            winner = team1
         else:
-            winner = team2 # visitor team wins
+            winner = team2
             
         return winner
     
@@ -307,7 +308,7 @@ class FinalTournament(Game):
         return rounds_probs
 
 # 6 Simulation
-DATA = megadata.copy() # data that Generator must rely on
+DATA = megadata.copy()
 
 GEN = {
  'alpha': stats.alpha.rvs,
@@ -356,35 +357,30 @@ round_df = pd.DataFrame(playoff.rounds_probs)
 print(round_df)
 
 # 7 Visualization
-
 def plotting(rounds_data):
     
     rounds_stats = list(rounds_data.values())
     team_names = list(rounds_stats[0].keys())
+    rounds_number = list(rounds_data.keys())
+    states = np.array([list(r.values()) for r in rounds_stats]).T
+    title_name = ['1 round' ,'2 round' ,'3 round' ,'4 round']
     
-    # x is number of rounds used for labels, y is a 2-D array of (n_teams, n_rounds) used for data
-    x = list(rounds_data.keys())
-    y = np.array([list(r.values()) for r in rounds_stats]).T 
-    
-    # we need at least 16 different colors, one for each team
-    c_1 =  sns.color_palette('tab10', n_colors = 10)
-    c_2 =  sns.color_palette("pastel", n_colors = 10)
-    color_map = c_1 + c_2 
-    
-    fig = plt.figure()
-    plt.stackplot(x, y, labels = team_names, colors = color_map) 
-    plt.legend(bbox_to_anchor=(1.1, 1.1), loc = 'upper left', fontsize=13)
-    plt.xticks(x, fontsize=14)
-    plt.yticks(fontsize=14)
-    plt.xlabel('Round Number', fontsize = 15)
-    plt.title('Winning probabilities by all Teams & Rounds', pad = 20, fontsize = 24)
-    plt.tight_layout()
-    plt.show()
+    fig = plt.figure(figsize=(16, 20))    
+    for i in rounds_number :
+        plt.subplot(4,1,i+1)
+        x = team_names
+        y = states[:,i]
+        plt.bar(x, y)
+        plt.xticks(x, fontsize=10)
+        plt.yticks(fontsize=10)
+        plt.ylabel('Winning probabilities', fontsize = 10)
+        plt.title(title_name[i], pad = 20, fontsize = 16) 
+        for a,b,j in zip(x,y,range(len(x))):
+            plt.text(a,b+0.001,"%.3f"%y[j],ha='center',fontsize=10)
+
+    plt.show() 
     
     return fig
-
-# check that a team's wins should get less and less in later rounds
-fig = plotting(playoff.rounds)
 
 # plot the results: probabilities of winning for all teams at each round
 fig = plotting(playoff.rounds_probs)
@@ -400,3 +396,10 @@ print(overall_rounds_res[4].head(5))
 final_round_res = round_df.sort_values(by=3,ascending=False)
 print('The final round winning probabilities:')
 print(final_round_res[3].head(5))
+
+# reslut
+print('----------------------------')
+print('champion probabilities:')
+print('Nets > Nuggets > Bucks')
+print('----------------------------')
+print('truth champion : Bucks')

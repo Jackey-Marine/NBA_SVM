@@ -6,9 +6,9 @@ using SVM to predict the NBA champion.
 
 ### Figure
 
-![Winning probabilities](./Figure_1.svg)
+![corr](./Figure_1.png)
 
-![champion probabilities](./Figure_2.svg)
+![champion probabilities](./Figure_2.png)
 
 ### Predict result
 
@@ -25,4 +25,4 @@ using SVM to predict the NBA champion.
 | type | winner |  
 | :-: | :-:|
 | 模型预测结果 | Nets > Nuggets > Bucks |  
-| 实际结果 | Bucks |
+| 实际比赛结果 | Bucks |
