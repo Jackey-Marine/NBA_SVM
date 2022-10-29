@@ -1,10 +1,14 @@
-# predict NBA 🏆 by SVM
+# %% [markdown]
+# # predict NBA 🏆 by SVM
+# 
+# ## 1 package import
 
-# python env
+# %%
+# env
 import sys
 print(sys.version)
 
-# 1 package import
+# %%
 import numpy as np
 import pandas as pd
 
@@ -30,15 +34,29 @@ plt.style.use('classic')
 from pylab import rcParams
 rcParams['figure.figsize'] = 10, 5
 
-# 2 Data cleaning and preprocessing
+# %% [markdown]
+# ## 2 Data cleaning and preprocessing
+# 
+# We would like to sort the dataset in chronological order, remove the NaN values, and pre-process the data to distinguish between hosts and visitors.
+
+# %%
 # load data
 df = pd.read_csv("NBA_SVM/data/games.csv")
-# sort data by GAME_DATA_EST
+df.head()
+
+# %%
+# # sort data by GAME_DATA_EST
 df = df.sort_values(by='GAME_DATE_EST').reset_index(drop = True)
 # drop NaN data and check
 df = df.loc[df['GAME_DATE_EST'] >= "2004-01-01"].reset_index(drop=True)
+df.head()
+
+# %%
 # replace Team ID with Names
 df_names = pd.read_csv('NBA_SVM/data/teams.csv')
+df_names.head()
+
+# %%
 # replace 'HOME_TEAM_ID' and 'VISITOR_TEAM_ID' with names in df_names
 df_names = df_names[['TEAM_ID', 'NICKNAME']]
 # replace 'HOME_TEAM_ID'
@@ -53,10 +71,29 @@ result_2 = pd.merge(df['VISITOR_TEAM_ID'], visitor_names, how = "left", on="VISI
 df['VISITOR_TEAM_ID'] = result_2['NICKNAME']
 print(df)
 
-# 3 Segmentation of Data Set & Features selection
+# %% [markdown]
+# ## 3 Segmentation of Data Set
+# 
+# We want to try and predict the 2020-2021 NBA play off results starting 2021-08 hence, this portion of the data is the test data set and others are the train data set.
+
+# %%
 df = df.loc[df['GAME_DATE_EST'] < '2021-08-01'].reset_index(drop=True)
+
+# %% [markdown]
+# ## 4 Features selection
+# 
+# There are two ways to select the features.
+# 1. Select only one feature (points), the prediction is just based on which team has the higher point.
+# 2. Select features other than points, the resoult is based on the prediction of a classifier which takes those features as inputs.
+# 
+# Now we choose the ***second selection***.
+
+# %%
 # list all features
 feature_list = list(df.columns)
+feature_list
+
+# %%
 # selecte features
 selected_features = [
     'FG_PCT_home', 'FT_PCT_home', 'FG3_PCT_home', 'AST_home', 'REB_home',
@@ -64,25 +101,35 @@ selected_features = [
     ]
 X = df[selected_features]
 X.head()
+
+# %%
 # check the targets
 y = df['HOME_TEAM_WINS']
 y.head()
+
+# %%
 # turn data into numpy arrays for training
 X = X.to_numpy()
 y = y.to_numpy()
 
-# 4 Fitting SVM
+# %% [markdown]
+# ## 5 Fitting SVM
+
+# %%
 # train test split
 X_train, X_test, y_train, y_test = train_test_split(
     X, 
     y, 
     test_size = 0.3, random_state = 42)
+
 print("X shape", X_train.shape, "y shape", y_train.shape)
 
+# %%
 # feature scaling
 scaler = StandardScaler()
 X_train = scaler.fit_transform(X_train)
 
+# %%
 # train SVM
 clf = svm.SVC(kernel='linear') # initialize a model
 clf.fit(X_train, y_train) # fit(train) it with the training data and targets
@@ -91,6 +138,7 @@ clf.fit(X_train, y_train) # fit(train) it with the training data and targets
 y_pred = clf.predict(X_test) 
 print('balanced accuracy score:', balanced_accuracy_score(y_test, y_pred)) 
 
+# %%
 # fine-tuning hyperparameters
 scoring = make_scorer(balanced_accuracy_score)
 param_grid = {'C': [0.1, 1, 10],  
@@ -99,13 +147,22 @@ param_grid = {'C': [0.1, 1, 10],
 grid = GridSearchCV(svm.SVC(kernel='linear'), param_grid, scoring = scoring, refit=True, verbose=2) 
 grid.fit(X_train, y_train)
 
+# %%
 # print the best model's hyperparameters
 Dis = grid.best_estimator_
 print(Dis)
 
-# 5 Fitting a Generator
-df_ = df.loc[df['GAME_DATE_EST'] > '2020-10-01'].reset_index(drop=True)
+# %% [markdown]
+# ## 6 Fitting a Generator
+# 
+# Since we aim to predict 2020-2021 playoff, here we will just fit the data from that regular session which starts in Oct, 2020.   
+# For time-series problems, we give priority to the recent data most reflective of team's recent ability.
 
+# %%
+df_ = df.loc[df['GAME_DATE_EST'] > '2020-10-01'].reset_index(drop=True)
+df_.head()
+
+# %%
 # define the list of common distributions for fitting
 selected_distributions = [
     'norm','t', 'f', 'chi', 'cosine', 'alpha', 
@@ -132,6 +189,7 @@ for team_name in unique_teams:
     # convert the pandas.DataFrame to numpy array
     all_team_sim_data[team_name] = df_s.to_numpy()
 
+# %%
 megadata = {} # store the data that our Generator will rely on
 
 for team_name in unique_teams:
@@ -139,7 +197,7 @@ for team_name in unique_teams:
     feature_dis_paras = []
     data = all_team_sim_data[team_name]
     
-    # five features for each team
+    # 5 features for each team
     for i in range(5): 
         f = Fitter(data[:, i])
         f.distributions = selected_distributions
@@ -149,15 +207,45 @@ for team_name in unique_teams:
         
     megadata[team_name] = feature_dis_paras
     
-print('All features fitted!')
+print('Features for all teams have been fitted!')
 
-# class
+# %% [markdown]
+# ## 7 Simulation
+
+# %%
+DATA = megadata.copy() # data that Generator must rely on
+
+GEN = {
+ 'alpha': stats.alpha.rvs,
+ 'beta': stats.beta.rvs,
+ 'chi': stats.chi.rvs,
+ 'cosine': stats.cosine.rvs,
+ 'dgamma': stats.dgamma.rvs,
+ 'dweibull':stats.dweibull.rvs,
+ 'f':stats.f.rvs,
+ 'fisk':stats.fisk.rvs,
+ 'gamma': stats.gamma.rvs,
+ 'maxwell':stats.maxwell.rvs,
+ 'norm':stats.norm.rvs,
+ 'pareto':stats.pareto.rvs,
+ 't':stats.t.rvs,
+}
+
+# feature scaler + fine-turned SVM 
+DIS = make_pipeline(scaler, Dis)
+
+# %%
 class Game:
+    
     '''
+    
     A game between two teams:
+    
     - feature values sampled from Generator
     - win/loss predicted by Discriminator
+    
     '''
+    
     def __init__ (self, random_state = None):
         
         self.random_state = random_state # keep this to None for making simulations 
@@ -197,6 +285,7 @@ class Game:
             
         return sample 
 
+# %%
 class FinalTournament(Game):
     
     ''' Best-of-7 elimination, 16 teams, 4 rounds in total to win championship '''
@@ -306,28 +395,7 @@ class FinalTournament(Game):
                 
         return rounds_probs
 
-# 6 Simulation
-DATA = megadata.copy() # data that Generator must rely on
-
-GEN = {
- 'alpha': stats.alpha.rvs,
- 'beta': stats.beta.rvs,
- 'chi': stats.chi.rvs,
- 'cosine': stats.cosine.rvs,
- 'dgamma': stats.dgamma.rvs,
- 'dweibull':stats.dweibull.rvs,
- 'f':stats.f.rvs,
- 'fisk':stats.fisk.rvs,
- 'gamma': stats.gamma.rvs,
- 'maxwell':stats.maxwell.rvs,
- 'norm':stats.norm.rvs,
- 'pareto':stats.pareto.rvs,
- 't':stats.t.rvs,
-}
-
-# feature scaler + fine-turned SVM 
-DIS = make_pipeline(scaler, Dis)
-
+# %%
 # the below roster is based on 2020-2021 NBA playoffs
 # https://en.wikipedia.org/wiki/2020%E2%80%9321_NBA_season
 
@@ -346,17 +414,21 @@ group_list = [
      ('Nuggets', 'Trail Blazers'),  # group G
      ('Suns', 'Lakers')]            # group H
 
+# %%
 # initiate a playoff
 playoff = FinalTournament()
 # simulate the playoff 5,000 times
 playoff.simulate(group_list, n_simulation = 5000)
 
+# %%
 # see the winning probabilities from 5,000 playoffs
 round_df = pd.DataFrame(playoff.rounds_probs)
-print(round_df)
+round_df
 
-# 7 Visualization
+# %% [markdown]
+# ## 8 Visualization
 
+# %%
 def plotting(rounds_data):
     
     rounds_stats = list(rounds_data.values())
@@ -383,12 +455,15 @@ def plotting(rounds_data):
     
     return fig
 
+# %%
 # check that a team's wins should get less and less in later rounds
 fig = plotting(playoff.rounds)
 
+# %%
 # plot the results: probabilities of winning for all teams at each round
 fig = plotting(playoff.rounds_probs)
 
+# %%
 # over all rounds winning probabilities
 overall_rounds_df = round_df
 overall_rounds_df[4] = (round_df[0] + round_df[1] + round_df[2] + round_df[3])/4
@@ -400,3 +475,13 @@ print(overall_rounds_res[4].head(5))
 final_round_res = round_df.sort_values(by=3,ascending=False)
 print('The final round winning probabilities:')
 print(final_round_res[3].head(5))
+
+# %% [markdown]
+# ## 9 Result
+# 
+# | type | winner |  
+# | :-: | :-:|
+# | 模型预测结果 | Nets > Nuggets > Bucks |  
+# | 实际结果 | Bucks |
+
+
