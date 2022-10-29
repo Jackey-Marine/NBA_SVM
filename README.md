@@ -1,7 +1,9 @@
 # NBA_SVM
+
 using SVM to predict the NBA champion.
 
 ## 2019-2020 NBA predict chanmpion
+
 ### Figure
 
 ![Winning probabilities](./Figure_1.svg)
@@ -9,6 +11,7 @@ using SVM to predict the NBA champion.
 ![champion probabilities](./Figure_2.svg)
 
 ### Predict result
+
 |Team ID |  The final round winning probabilities |
 |:-:| :-:|
 | Nets |  0.2530 |
